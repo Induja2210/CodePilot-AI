@@ -14,6 +14,10 @@ function Analysis() {
   const [explaining, setExplaining] = useState(false);
   const [explainError, setExplainError] = useState("");
 
+  const [technologies, setTechnologies] = useState(null);
+  const [technologyLoading, setTechnologyLoading] = useState(false);
+  const [technologyError, setTechnologyError] = useState("");
+
   useEffect(() => {
     const fetchAnalysis = async () => {
       try {
@@ -135,6 +139,34 @@ function Analysis() {
     }
   };
 
+  const handleDetectTechnologies = async () => {
+    try {
+      setTechnologyLoading(true);
+      setTechnologyError("");
+      setTechnologies(null);
+
+      const response = await fetch(
+        "http://127.0.0.1:8000/detect-technologies"
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail || "Could not detect technologies."
+        );
+      }
+
+      setTechnologies(data);
+    } catch (err) {
+      setTechnologyError(err.message);
+    } finally {
+      setTechnologyLoading(false);
+    }
+  };
+ 
+
+
   const closeSelectedFile = () => {
     setSelectedFile(null);
     setExplanation("");
@@ -186,6 +218,82 @@ function Analysis() {
           <p>Total Lines</p>
         </div>
       </div>
+
+        <div style={styles.technologySection}>
+          <button
+            type="button"
+            onClick={handleDetectTechnologies}
+            disabled={technologyLoading}
+            style={{
+              ...styles.technologyButton,
+              opacity: technologyLoading ? 0.7 : 1,
+              cursor: technologyLoading
+                ? "not-allowed"
+                : "pointer",
+            }}
+          >
+            {technologyLoading
+              ? "Detecting Technologies..."
+              : "Detect Technologies"}
+          </button>
+
+          {technologyError && (
+            <p style={styles.technologyError}>
+              {technologyError}
+            </p>
+          )}
+
+          {technologies && (
+            <div style={styles.technologyBox}>
+              <h2>Detected Technologies</h2>
+
+              <div style={styles.technologyGrid}>
+                <div>
+                  <h3>Languages</h3>
+
+                  {technologies.languages?.length > 0 ? (
+                    <ul>
+                      {technologies.languages.map((language) => (
+                        <li key={language}>{language}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>None detected</p>
+                  )}
+                </div>
+
+                <div>
+                  <h3>Frameworks</h3>
+
+                  {technologies.frameworks?.length > 0 ? (
+                    <ul>
+                      {technologies.frameworks.map((framework) => (
+                        <li key={framework}>{framework}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>None detected</p>
+                  )}
+                </div>
+
+                <div>
+                  <h3>Tools</h3>
+
+                  {technologies.tools?.length > 0 ? (
+                    <ul>
+                      {technologies.tools.map((tool) => (
+                        <li key={tool}>{tool}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>None detected</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
 
       {error && <p style={styles.error}>{error}</p>}
 
@@ -336,6 +444,42 @@ const styles = {
     minWidth: "180px",
     borderRadius: "12px",
     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+  },
+
+  technologySection: {
+    marginBottom: "30px",
+  },
+
+  technologyButton: {
+    padding: "12px 20px",
+    border: "none",
+    borderRadius: "8px",
+    backgroundColor: "#059669",
+    color: "white",
+    fontSize: "15px",
+    fontWeight: "600",
+  },
+
+  technologyBox: {
+    marginTop: "20px",
+    padding: "24px",
+    borderRadius: "12px",
+    backgroundColor: "white",
+    border: "1px solid #e5e7eb",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+  },
+
+  technologyGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: "20px",
+    marginTop: "16px",
+  },
+
+  technologyError: {
+    marginTop: "15px",
+    color: "#dc2626",
+    fontWeight: "600",
   },
 
   tableBox: {

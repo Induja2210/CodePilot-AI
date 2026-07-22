@@ -7,6 +7,9 @@ from pydantic import BaseModel
 
 from services.ai_explainer import explain_code
 from services.analyzer import analyze_file
+from services.project_summarizer import summarize_project
+from services.technology_detector import detect_technologies
+from services.bug_detector import detect_bugs
 
 
 # Absolute backend and uploads paths
@@ -101,8 +104,17 @@ async def upload_project(
 
         # Only keeps the actual filename.
         # Example: src/components/Navbar.jsx becomes Navbar.jsx.
-        safe_filename = original_path.name
-        destination = UPLOAD_DIRECTORY / safe_filename
+        # Preserve the uploaded project folder structure.
+        normalized_path = original_filename.replace("\\", "/")
+        relative_path = Path(normalized_path)
+
+        # Prevent unsafe paths such as ../../file.py
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            skipped_files.append(original_filename)
+            continue
+
+        destination = UPLOAD_DIRECTORY / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
 
         file_content = await uploaded_file.read()
         destination.write_bytes(file_content)
@@ -114,7 +126,8 @@ async def upload_project(
 
         uploaded_files.append(
             {
-                "filename": safe_filename,
+                "filename": relative_path.name,
+                "relative_path": str(relative_path),
                 "original_path": original_filename,
                 "extension": extension,
                 "size": len(file_content),
@@ -163,6 +176,26 @@ def analyze_project():
     }
 
 
+@app.get("/detect-technologies")
+def get_detected_technologies():
+    try:
+        technologies = detect_technologies(
+            UPLOAD_DIRECTORY
+        )
+
+        return {
+            "success": True,
+            "message": "Technologies detected successfully.",
+            **technologies,
+        }
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Technology detection failed: {error}",
+        ) from error
+
+
 @app.get("/file-content")
 def get_file_content(path: str):
     requested_file = get_safe_uploaded_file(path)
@@ -190,8 +223,8 @@ def get_file_content(path: str):
             status_code=500,
             detail=f"Could not read file: {error}",
         ) from error
-
-
+  
+    
 @app.post("/explain-file")
 def explain_file(request: ExplainFileRequest):
     requested_file = get_safe_uploaded_file(request.path)
@@ -251,4 +284,100 @@ def explain_file(request: ExplainFileRequest):
         raise HTTPException(
             status_code=500,
             detail=f"AI explanation failed: {error}",
+        ) from error
+    
+@app.post("/detect-bugs")
+def detect_file_bugs(request: ExplainFileRequest):
+    requested_file = get_safe_uploaded_file(request.path)
+
+    if not requested_file.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="File not found",
+        )
+
+    if not requested_file.is_file():
+        raise HTTPException(
+            status_code=400,
+            detail="The selected path is not a file",
+        )
+
+    try:
+        code = requested_file.read_text(
+            encoding="utf-8",
+            errors="ignore",
+        )
+
+        if not code.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="The selected file is empty",
+            )
+
+        bug_report = detect_bugs(
+            file_name=requested_file.name,
+            language=requested_file.suffix.lower(),
+            code=code,
+        )
+
+        return {
+            "success": True,
+            "file_name": requested_file.name,
+            "bug_report": bug_report,
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        error_code = getattr(error, "code", None)
+        error_message = str(error)
+
+        if error_code == 429 or "429" in error_message:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    "Gemini API quota reached. "
+                    "Please wait for the retry period and try again."
+                ),
+            ) from error
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Bug detection failed: {error_message}",
+        ) from error    
+    
+@app.post("/summarize-project")
+def generate_project_summary():
+    try:
+        summary = summarize_project(UPLOAD_DIRECTORY)
+
+        return {
+            "success": True,
+            "message": "Project summary generated successfully.",
+            "summary": summary,
+        }
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        error_code = getattr(error, "code", None)
+        error_message = str(error)
+
+        if error_code == 429 or "429" in error_message:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    "Gemini API quota reached. "
+                    "Please wait for the retry period and try again."
+                ),
+            ) from error
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Project summarization failed: {error_message}",
         ) from error
