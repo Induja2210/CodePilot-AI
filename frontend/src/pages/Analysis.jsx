@@ -1,6 +1,45 @@
-
-
 import { useEffect, useState } from "react";
+
+const API_BASE_URL = "http://127.0.0.1:8000";
+
+const getFilePath = (file) => {
+  return (
+    file?.relative_path ||
+    file?.file_name ||
+    file?.filename ||
+    ""
+  );
+};
+
+const cleanFilePath = (path) => {
+  return path.replace(/^\/+/, "");
+};
+
+const requestJson = async (
+  url,
+  options = {},
+  fallbackMessage = "Something went wrong."
+) => {
+  const response = await fetch(url, options);
+
+  let data = {};
+
+  try {
+    data = await response.json();
+  } catch {
+    data = {};
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      data.detail ||
+        data.message ||
+        `${fallbackMessage} Status: ${response.status}`
+    );
+  }
+
+  return data;
+};
 
 function Analysis() {
   const [analysis, setAnalysis] = useState(null);
@@ -10,6 +49,7 @@ function Analysis() {
   const [codeLoading, setCodeLoading] = useState(false);
 
   const [error, setError] = useState("");
+
   const [explanation, setExplanation] = useState("");
   const [explaining, setExplaining] = useState(false);
   const [explainError, setExplainError] = useState("");
@@ -18,13 +58,37 @@ function Analysis() {
   const [bugLoading, setBugLoading] = useState(false);
   const [bugError, setBugError] = useState("");
 
+  const [optimization, setOptimization] = useState("");
+  const [optimizing, setOptimizing] = useState(false);
+  const [optimizationError, setOptimizationError] =
+    useState("");
+
   const [projectSummary, setProjectSummary] = useState("");
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState("");
 
   const [technologies, setTechnologies] = useState(null);
-  const [technologyLoading, setTechnologyLoading] = useState(false);
+  const [technologyLoading, setTechnologyLoading] =
+    useState(false);
   const [technologyError, setTechnologyError] = useState("");
+
+  const files = Array.isArray(analysis?.files)
+    ? analysis.files
+    : [];
+
+  const aiLoading =
+    explaining || bugLoading || optimizing;
+
+  const clearFileResults = () => {
+    setExplanation("");
+    setExplainError("");
+
+    setBugReport("");
+    setBugError("");
+
+    setOptimization("");
+    setOptimizationError("");
+  };
 
   useEffect(() => {
     const fetchAnalysis = async () => {
@@ -32,21 +96,19 @@ function Analysis() {
         setLoading(true);
         setError("");
 
-        const response = await fetch(
-          "http://127.0.0.1:8000/analyze"
+        const data = await requestJson(
+          `${API_BASE_URL}/analyze`,
+          {},
+          "Failed to load project analysis."
         );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.detail || "Failed to load project analysis."
-          );
-        }
 
         setAnalysis(data);
       } catch (err) {
-        setError(err.message);
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load project analysis."
+        );
       } finally {
         setLoading(false);
       }
@@ -59,40 +121,41 @@ function Analysis() {
     try {
       setCodeLoading(true);
       setError("");
-      setExplanation("");
-      setExplainError("");
-      setBugReport("");
-      setBugError("");     
+      setSelectedFile(null);
+      clearFileResults();
 
-      const filePath =
-        file.relative_path ||
-        file.file_name ||
-        file.filename;
+      const rawPath = getFilePath(file);
+      const filePath = cleanFilePath(rawPath);
 
       if (!filePath) {
         throw new Error("The file path is missing.");
       }
 
-      const response = await fetch(
-        `http://127.0.0.1:8000/file-content?path=${encodeURIComponent(
+      const data = await requestJson(
+        `${API_BASE_URL}/file-content?path=${encodeURIComponent(
           filePath
-        )}`
+        )}`,
+        {},
+        "Could not load the file content."
       );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.detail || "Could not load the file content."
-        );
-      }
 
       setSelectedFile({
         ...data,
+        file_name:
+          data.file_name ||
+          data.filename ||
+          file.file_name ||
+          file.filename ||
+          filePath.split("/").pop(),
         relative_path: filePath,
       });
     } catch (err) {
-      setError(err.message);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not load the file content."
+      );
+
       setSelectedFile(null);
     } finally {
       setCodeLoading(false);
@@ -110,16 +173,17 @@ function Analysis() {
       setExplanation("");
       setExplainError("");
 
-      const filePath =
-        selectedFile.relative_path ||
-        selectedFile.file_name;
+      const rawPath = getFilePath(selectedFile);
+      const filePath = cleanFilePath(rawPath);
 
       if (!filePath) {
-        throw new Error("The selected file path is missing.");
+        throw new Error(
+          "The selected file path is missing."
+        );
       }
 
-      const response = await fetch(
-        "http://127.0.0.1:8000/explain-file",
+      const data = await requestJson(
+        `${API_BASE_URL}/explain-file`,
         {
           method: "POST",
           headers: {
@@ -128,22 +192,21 @@ function Analysis() {
           body: JSON.stringify({
             path: filePath,
           }),
-        }
+        },
+        "Could not generate the code explanation."
       );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.detail || "Could not generate the code explanation."
-        );
-      }
 
       setExplanation(
-        data.explanation || "No explanation was returned."
+        data.explanation ||
+          data.result ||
+          "No explanation was returned."
       );
     } catch (err) {
-      setExplainError(err.message);
+      setExplainError(
+        err instanceof Error
+          ? err.message
+          : "Could not generate the code explanation."
+      );
     } finally {
       setExplaining(false);
     }
@@ -160,16 +223,17 @@ function Analysis() {
       setBugReport("");
       setBugError("");
 
-      const filePath =
-        selectedFile.relative_path ||
-        selectedFile.file_name;
+      const rawPath = getFilePath(selectedFile);
+      const filePath = cleanFilePath(rawPath);
 
       if (!filePath) {
-        throw new Error("The selected file path is missing.");
+        throw new Error(
+          "The selected file path is missing."
+        );
       }
 
-      const response = await fetch(
-        "http://127.0.0.1:8000/detect-bugs",
+      const data = await requestJson(
+        `${API_BASE_URL}/detect-bugs`,
         {
           method: "POST",
           headers: {
@@ -178,67 +242,110 @@ function Analysis() {
           body: JSON.stringify({
             path: filePath,
           }),
-        }
+        },
+        "Could not detect bugs."
       );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.detail || "Could not detect bugs."
-        );
-      }
 
       setBugReport(
-        data.bug_report || "No bug report was returned."
+        data.bug_report ||
+          data.report ||
+          data.result ||
+          "No bug report was returned."
       );
     } catch (err) {
-      setBugError(err.message);
+      setBugError(
+        err instanceof Error
+          ? err.message
+          : "Could not detect bugs."
+      );
     } finally {
       setBugLoading(false);
     }
   };
 
+  const handleOptimizeCode = async () => {
+    if (!selectedFile) {
+      setOptimizationError(
+        "Please select a file first."
+      );
+      return;
+    }
+
+    try {
+      setOptimizing(true);
+      setOptimization("");
+      setOptimizationError("");
+
+      const rawPath = getFilePath(selectedFile);
+      const filePath = cleanFilePath(rawPath);
+
+      if (!filePath) {
+        throw new Error(
+          "The selected file path is missing."
+        );
+      }
+
+      const data = await requestJson(
+        `${API_BASE_URL}/optimize`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            path: filePath,
+          }),
+        },
+        "Could not optimize the selected file."
+      );
+
+      setOptimization(
+        data.optimization ||
+          data.suggestions ||
+          data.result ||
+          "No optimization response was returned."
+      );
+    } catch (err) {
+      setOptimizationError(
+        err instanceof Error
+          ? err.message
+          : "Could not optimize the selected file."
+      );
+    } finally {
+      setOptimizing(false);
+    }
+  };
 
   const handleProjectSummary = async () => {
     try {
-
       setSummaryLoading(true);
       setProjectSummary("");
       setSummaryError("");
 
-      const response = await fetch(
-
-        "http://127.0.0.1:8000/summarize-project",
+      const data = await requestJson(
+        `${API_BASE_URL}/summarize-project`,
         {
-
           method: "POST",
-        }
+        },
+        "Could not generate the project summary."
       );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-
-          data.detail || "Could not generate the project summary."
-        );
-      }
 
       setProjectSummary(
-
-        data.summary || "No project summary was returned."
+        data.summary ||
+          data.project_summary ||
+          data.result ||
+          "No project summary was returned."
       );
     } catch (err) {
-      
-      setSummaryError(err.message);
+      setSummaryError(
+        err instanceof Error
+          ? err.message
+          : "Could not generate the project summary."
+      );
     } finally {
-
       setSummaryLoading(false);
     }
   };
-
-
 
   const handleDetectTechnologies = async () => {
     try {
@@ -246,21 +353,38 @@ function Analysis() {
       setTechnologyError("");
       setTechnologies(null);
 
-      const response = await fetch(
-        "http://127.0.0.1:8000/detect-technologies"
+      const data = await requestJson(
+        `${API_BASE_URL}/detect-technologies`,
+        {},
+        "Could not detect technologies."
       );
 
-      const data = await response.json();
+      const detectedTechnologies =
+        data.technologies || data;
 
-      if (!response.ok) {
-        throw new Error(
-          data.detail || "Could not detect technologies."
-        );
-      }
+      setTechnologies({
+        languages: Array.isArray(
+          detectedTechnologies.languages
+        )
+          ? detectedTechnologies.languages
+          : [],
 
-      setTechnologies(data);
+        frameworks: Array.isArray(
+          detectedTechnologies.frameworks
+        )
+          ? detectedTechnologies.frameworks
+          : [],
+
+        tools: Array.isArray(detectedTechnologies.tools)
+          ? detectedTechnologies.tools
+          : [],
+      });
     } catch (err) {
-      setTechnologyError(err.message);
+      setTechnologyError(
+        err instanceof Error
+          ? err.message
+          : "Could not detect technologies."
+      );
     } finally {
       setTechnologyLoading(false);
     }
@@ -268,10 +392,8 @@ function Analysis() {
 
   const closeSelectedFile = () => {
     setSelectedFile(null);
-    setExplanation("");
-    setExplainError("");
-    setBugReport("");
-    setBugError("");
+    setCodeLoading(false);
+    clearFileResults();
     setError("");
   };
 
@@ -287,12 +409,15 @@ function Analysis() {
     return (
       <div style={{ padding: "40px" }}>
         <h2>Could not load analysis</h2>
-        <p style={{ color: "red" }}>{error}</p>
+
+        <p style={{ color: "red" }}>
+          {error}
+        </p>
       </div>
     );
   }
 
-  if (!analysis || !analysis.success) {
+  if (!analysis) {
     return (
       <h2 style={{ padding: "40px" }}>
         No analysis available.
@@ -310,12 +435,17 @@ function Analysis() {
 
       <div style={styles.summary}>
         <div style={styles.card}>
-          <h2>{analysis.total_files_analyzed}</h2>
+          <h2>
+            {analysis.total_files_analyzed ??
+              files.length}
+          </h2>
+
           <p>Files Analysed</p>
         </div>
 
         <div style={styles.card}>
-          <h2>{analysis.total_lines}</h2>
+          <h2>{analysis.total_lines ?? 0}</h2>
+
           <p>Total Lines</p>
         </div>
       </div>
@@ -387,11 +517,17 @@ function Analysis() {
               <div>
                 <h3>Languages</h3>
 
-                {technologies.languages?.length > 0 ? (
+                {technologies.languages.length > 0 ? (
                   <ul>
-                    {technologies.languages.map((language) => (
-                      <li key={language}>{language}</li>
-                    ))}
+                    {technologies.languages.map(
+                      (language, index) => (
+                        <li
+                          key={`${language}-${index}`}
+                        >
+                          {language}
+                        </li>
+                      )
+                    )}
                   </ul>
                 ) : (
                   <p>None detected</p>
@@ -401,11 +537,17 @@ function Analysis() {
               <div>
                 <h3>Frameworks</h3>
 
-                {technologies.frameworks?.length > 0 ? (
+                {technologies.frameworks.length > 0 ? (
                   <ul>
-                    {technologies.frameworks.map((framework) => (
-                      <li key={framework}>{framework}</li>
-                    ))}
+                    {technologies.frameworks.map(
+                      (framework, index) => (
+                        <li
+                          key={`${framework}-${index}`}
+                        >
+                          {framework}
+                        </li>
+                      )
+                    )}
                   </ul>
                 ) : (
                   <p>None detected</p>
@@ -415,11 +557,15 @@ function Analysis() {
               <div>
                 <h3>Tools</h3>
 
-                {technologies.tools?.length > 0 ? (
+                {technologies.tools.length > 0 ? (
                   <ul>
-                    {technologies.tools.map((tool) => (
-                      <li key={tool}>{tool}</li>
-                    ))}
+                    {technologies.tools.map(
+                      (tool, index) => (
+                        <li key={`${tool}-${index}`}>
+                          {tool}
+                        </li>
+                      )
+                    )}
                   </ul>
                 ) : (
                   <p>None detected</p>
@@ -430,59 +576,84 @@ function Analysis() {
         )}
       </div>
 
-      {error && <p style={styles.error}>{error}</p>}
+      {error && (
+        <p style={styles.error}>
+          {error}
+        </p>
+      )}
 
       <div style={styles.tableBox}>
         <h2>File Details</h2>
 
-        {analysis.files.length === 0 ? (
+        {files.length === 0 ? (
           <p>No supported files were found.</p>
         ) : (
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={styles.header}>File Name</th>
-                <th style={styles.header}>Language</th>
-                <th style={styles.header}>Lines</th>
-                <th style={styles.header}>Size</th>
-                <th style={styles.header}>TODOs</th>
+                <th style={styles.header}>
+                  File Name
+                </th>
+
+                <th style={styles.header}>
+                  Language
+                </th>
+
+                <th style={styles.header}>
+                  Lines
+                </th>
+
+                <th style={styles.header}>
+                  Size
+                </th>
+
+                <th style={styles.header}>
+                  TODOs
+                </th>
               </tr>
             </thead>
 
             <tbody>
-              {analysis.files.map((file, index) => (
-                <tr
-                  key={`${
-                    file.relative_path || file.file_name
-                  }-${index}`}
-                >
-                  <td style={styles.cell}>
-                    <button
-                      type="button"
-                      onClick={() => viewFileContent(file)}
-                      style={styles.fileButton}
-                    >
-                      {file.file_name}
-                    </button>
-                  </td>
+              {files.map((file, index) => {
+                const filePath = getFilePath(file);
 
-                  <td style={styles.cell}>
-                    {file.language}
-                  </td>
+                return (
+                  <tr
+                    key={`${filePath || "file"}-${index}`}
+                  >
+                    <td style={styles.cell}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          viewFileContent(file)
+                        }
+                        style={styles.fileButton}
+                      >
+                        {file.file_name ||
+                          file.filename ||
+                          filePath ||
+                          "Unnamed file"}
+                      </button>
+                    </td>
 
-                  <td style={styles.cell}>
-                    {file.line_count}
-                  </td>
+                    <td style={styles.cell}>
+                      {file.language || "Unknown"}
+                    </td>
 
-                  <td style={styles.cell}>
-                    {file.size_bytes} bytes
-                  </td>
+                    <td style={styles.cell}>
+                      {file.line_count ?? 0}
+                    </td>
 
-                  <td style={styles.cell}>
-                    {file.todo_count}
-                  </td>
-                </tr>
-              ))}
+                    <td style={styles.cell}>
+                      {file.size_bytes ?? 0} bytes
+                    </td>
+
+                    <td style={styles.cell}>
+                      {file.todo_count ?? 0}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -494,93 +665,135 @@ function Analysis() {
         </p>
       )}
 
-        {selectedFile && !codeLoading && (
-          <div style={styles.codeBox}>
-            <div style={styles.codeHeader}>
-              <h2>{selectedFile.file_name}</h2>
+      {selectedFile && !codeLoading && (
+        <div style={styles.codeBox}>
+          <div style={styles.codeHeader}>
+            <h2>
+              {selectedFile.file_name ||
+                selectedFile.filename ||
+                selectedFile.relative_path ||
+                "Selected File"}
+            </h2>
 
-              <div style={styles.headerActions}>
-                <button
-                  type="button"
-                  onClick={handleExplainCode}
-                  disabled={explaining}
-                  style={{
-                    ...styles.explainButton,
-                    opacity: explaining ? 0.7 : 1,
-                    cursor: explaining
-                      ? "not-allowed"
-                      : "pointer",
-                   }}
-                 >
-                   {explaining
-                     ? "Explaining..."
-                     : "Explain Code"}
-                </button>
+            <div style={styles.headerActions}>
+              <button
+                type="button"
+                onClick={handleExplainCode}
+                disabled={aiLoading}
+                style={{
+                  ...styles.explainButton,
+                  opacity: aiLoading ? 0.7 : 1,
+                  cursor: aiLoading
+                    ? "not-allowed"
+                    : "pointer",
+                }}
+              >
+                {explaining
+                  ? "Explaining..."
+                  : "Explain Code"}
+              </button>
 
-                <button
-                  type="button"
-                  onClick={handleDetectBugs}
-                  disabled={bugLoading}
-                  style={{
-                    ...styles.bugButton,
-                    opacity: bugLoading ? 0.7 : 1,
-                    cursor: bugLoading
-                      ? "not-allowed"
-                      : "pointer",
-                  }}
-                >
-                  {bugLoading
-                    ? "Detecting Bugs..."
-                    : "Detect Bugs"}
-                </button>
+              <button
+                type="button"
+                onClick={handleDetectBugs}
+                disabled={aiLoading}
+                style={{
+                  ...styles.bugButton,
+                  opacity: aiLoading ? 0.7 : 1,
+                  cursor: aiLoading
+                    ? "not-allowed"
+                    : "pointer",
+                }}
+              >
+                {bugLoading
+                  ? "Detecting Bugs..."
+                  : "Detect Bugs"}
+              </button>
 
-                <button
-                  type="button"
-                  onClick={closeSelectedFile}
-                  style={styles.closeButton}
-                >
-                  Close
-                </button>
+              <button
+                type="button"
+                onClick={handleOptimizeCode}
+                disabled={aiLoading}
+                style={{
+                  ...styles.optimizeButton,
+                  opacity: aiLoading ? 0.7 : 1,
+                  cursor: aiLoading
+                    ? "not-allowed"
+                    : "pointer",
+                }}
+              >
+                {optimizing
+                  ? "Optimizing..."
+                  : "Optimize Code"}
+              </button>
+
+              <button
+                type="button"
+                onClick={closeSelectedFile}
+                style={styles.closeButton}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+
+          <pre style={styles.code}>
+            <code>
+              {selectedFile.content ?? ""}
+            </code>
+          </pre>
+
+          {explainError && (
+            <p style={styles.explainError}>
+              {explainError}
+            </p>
+          )}
+
+          {explanation && (
+            <div style={styles.explanationBox}>
+              <h2>AI Code Explanation</h2>
+
+              <div style={styles.explanationText}>
+                {explanation}
               </div>
             </div>
+          )}
 
-            <pre style={styles.code}>
-              <code>{selectedFile.content}</code>
-            </pre>
+          {bugError && (
+            <p style={styles.bugError}>
+              {bugError}
+            </p>
+          )}
 
-            {explainError && (
-              <p style={styles.explainError}>
-                {explainError}
-              </p>
-            )}
+          {bugReport && (
+            <div style={styles.bugReportBox}>
+              <h2>AI Bug Detection Report</h2>
 
-            {explanation && (
-              <div style={styles.explanationBox}>
-                <h2>AI Code Explanation</h2>
-
-                <div style={styles.explanationText}>
-                  {explanation}
-                </div>
+              <div style={styles.bugReportText}>
+                {bugReport}
               </div>
-            )}
+            </div>
+          )}
 
-            {bugError && (
-              <p style={styles.bugError}>
-                {bugError}
-              </p>
-            )}
+          {optimizationError && (
+            <p style={styles.optimizationError}>
+              {optimizationError}
+            </p>
+          )}
 
-            {bugReport && (
-              <div style={styles.bugReportBox}>
-                <h2>AI Bug Detection Report</h2>
+          {optimization && (
+            <div style={styles.optimizationBox}>
+              <h2>
+                AI Code Optimization Suggestions
+              </h2>
 
-                <div style={styles.bugReportText}>
-                  {bugReport}
-                </div>
+              <div style={styles.optimizationText}>
+                {optimization}
               </div>
-            )}
-          </div>
-      )} 
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -642,6 +855,7 @@ const styles = {
     whiteSpace: "pre-wrap",
     lineHeight: "1.7",
     color: "#374151",
+    overflowWrap: "anywhere",
   },
 
   summaryError: {
@@ -675,7 +889,8 @@ const styles = {
 
   technologyGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gridTemplateColumns:
+      "repeat(auto-fit, minmax(180px, 1fr))",
     gap: "20px",
     marginTop: "16px",
   },
@@ -741,6 +956,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "10px",
+    flexWrap: "wrap",
   },
 
   explainButton: {
@@ -761,24 +977,12 @@ const styles = {
     fontWeight: "600",
   },
 
-  bugReportBox: {
-
-    marginTop: "20px",
-    padding: "20px",
-    borderRadius: "10px",
-    backgroundColor: "#fff7ed",
-    color: "#111827",
-  },
-
-  bugReportText: {
-
-    whiteSpace: "pre-wrap",
-    lineHeight: "1.6",
-  },
-
-  bugError: {
-    marginTop: "20px",
-    color: "#fca5a5",
+  optimizeButton: {
+    padding: "8px 14px",
+    border: "none",
+    borderRadius: "6px",
+    backgroundColor: "#16a34a",
+    color: "white",
     fontWeight: "600",
   },
 
@@ -795,7 +999,7 @@ const styles = {
     overflowX: "auto",
     backgroundColor: "#020617",
     borderRadius: "8px",
-    whiteSpace: "pre-wrap",
+    whiteSpace: "pre",
   },
 
   loadingMessage: {
@@ -805,6 +1009,7 @@ const styles = {
   error: {
     color: "red",
     marginBottom: "20px",
+    fontWeight: "600",
   },
 
   explanationBox: {
@@ -818,9 +1023,51 @@ const styles = {
   explanationText: {
     whiteSpace: "pre-wrap",
     lineHeight: "1.6",
+    overflowWrap: "anywhere",
   },
 
   explainError: {
+    marginTop: "20px",
+    color: "#fca5a5",
+    fontWeight: "600",
+  },
+
+  bugReportBox: {
+    marginTop: "20px",
+    padding: "20px",
+    borderRadius: "10px",
+    backgroundColor: "#fff7ed",
+    color: "#111827",
+  },
+
+  bugReportText: {
+    whiteSpace: "pre-wrap",
+    lineHeight: "1.6",
+    overflowWrap: "anywhere",
+  },
+
+  bugError: {
+    marginTop: "20px",
+    color: "#fca5a5",
+    fontWeight: "600",
+  },
+
+  optimizationBox: {
+    marginTop: "20px",
+    padding: "20px",
+    borderRadius: "10px",
+    backgroundColor: "#f0fdf4",
+    color: "#111827",
+    border: "1px solid #bbf7d0",
+  },
+
+  optimizationText: {
+    whiteSpace: "pre-wrap",
+    lineHeight: "1.6",
+    overflowWrap: "anywhere",
+  },
+
+  optimizationError: {
     marginTop: "20px",
     color: "#fca5a5",
     fontWeight: "600",
