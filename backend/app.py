@@ -10,6 +10,7 @@ from services.analyzer import analyze_file
 from services.project_summarizer import summarize_project
 from services.technology_detector import detect_technologies
 from services.bug_detector import detect_bugs
+from services.code_optimizer import optimize_code
 
 
 # Absolute backend and uploads paths
@@ -43,6 +44,8 @@ app = FastAPI(
 class ExplainFileRequest(BaseModel):
     path: str
 
+class OptimizeFileRequest(BaseModel):
+    path: str
 
 app.add_middleware(
     CORSMiddleware,
@@ -285,6 +288,65 @@ def explain_file(request: ExplainFileRequest):
             status_code=500,
             detail=f"AI explanation failed: {error}",
         ) from error
+
+@app.post("/optimize")
+def optimize_selected_file(request: OptimizeFileRequest):
+    raw_path = request.path.replace("\\", "/")
+    relative_path = Path(raw_path)
+
+    # Remove "uploads" if it is already included in the path
+    if relative_path.parts and relative_path.parts[0] == "uploads":
+        relative_path = Path(*relative_path.parts[1:])
+
+    # Prevent absolute paths
+    if relative_path.is_absolute():
+        raise HTTPException(
+            status_code=400,
+            detail="Absolute file paths are not allowed.",
+        )
+
+    file_path = (UPLOAD_DIRECTORY / relative_path).resolve()
+    upload_root = UPLOAD_DIRECTORY.resolve()
+
+    # Prevent access outside the uploads folder
+    if file_path != upload_root and upload_root not in file_path.parents:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file path.",
+        )
+
+    # Check whether the selected file exists
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Selected file was not found.",
+        )
+
+    try:
+        optimization = optimize_code(file_path)
+
+        return {
+            "path": request.path,
+            "optimization": optimization,
+        }
+
+    except FileNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail=str(error),
+        ) from error
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Code optimization failed: {str(error)}",
+        ) from error    
     
 @app.post("/detect-bugs")
 def detect_file_bugs(request: ExplainFileRequest):
