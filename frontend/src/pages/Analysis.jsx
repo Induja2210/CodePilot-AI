@@ -63,6 +63,12 @@ function Analysis() {
   const [optimizationError, setOptimizationError] =
     useState("");
 
+  const [documentation, setDocumentation] = useState("");
+  const [documentationLoading, setDocumentationLoading] =
+    useState(false);
+  const [documentationError, setDocumentationError] =
+    useState("");  
+
   const [projectSummary, setProjectSummary] = useState("");
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState("");
@@ -390,7 +396,59 @@ function Analysis() {
     }
   };
 
-  const closeSelectedFile = () => {
+  const generateDocumentation = async () => {
+  setDocumentationLoading(true);
+  setDocumentationError("");
+  setDocumentation("");
+
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/generate-documentation`,
+      {
+        method: "POST",
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.detail || "Documentation generation failed."
+      );
+    }
+
+    setDocumentation(data.documentation);
+  } catch (error) {
+    setDocumentationError(
+      error.message || "Unable to generate documentation."
+    );
+  } finally {
+    setDocumentationLoading(false);
+  }
+};
+
+  const downloadDocumentation = () => {
+    if (!documentation) {
+      return;
+    }
+
+    const fileBlob = new Blob([documentation], {
+      type: "text/markdown;charset=utf-8",
+    });
+
+    const downloadUrl = URL.createObjectURL(fileBlob);
+    const downloadLink = document.createElement("a");
+
+    downloadLink.href = downloadUrl;
+    downloadLink.download = "README.md";
+
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+
+    URL.revokeObjectURL(downloadUrl);
+  };
+  const closeSelectedFile = () => {  
     setSelectedFile(null);
     setCodeLoading(false);
     clearFileResults();
@@ -575,6 +633,64 @@ function Analysis() {
           </div>
         )}
       </div>
+      <div style={styles.documentationSection}>
+        <div style={styles.documentationHeader}>
+          <div>
+            <h2 style={styles.documentationTitle}>
+              Automated Documentation
+            </h2>
+
+            <p style={styles.documentationDescription}>
+              Generate README documentation for the uploaded project.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={generateDocumentation}
+            disabled={documentationLoading}
+            style={{
+              ...styles.documentationButton,
+              opacity: documentationLoading ? 0.7 : 1,
+              cursor: documentationLoading
+                ? "not-allowed"
+                : "pointer",
+            }}
+          >
+            {documentationLoading
+              ? "Generating Documentation..."
+              : "Generate Documentation"}
+          </button>
+        </div>
+
+        {documentationError && (
+          <p style={styles.documentationError}>
+            {documentationError}
+          </p>
+        )}
+
+        {documentation && (
+          <div style={styles.documentationResult}>
+            <div style={styles.documentationResultHeader}>
+              <h3 style={styles.documentationResultTitle}>
+                Generated README
+              </h3>
+
+              <button
+                type="button"
+                onClick={downloadDocumentation}
+                style={styles.downloadButton}
+              >
+                Download README.md
+              </button>
+            </div>
+
+            <pre style={styles.documentationText}>
+              {documentation}
+            </pre>
+          </div>
+        )}
+       </div>
 
       {error && (
         <p style={styles.error}>
@@ -899,6 +1015,89 @@ const styles = {
     marginTop: "15px",
     color: "#dc2626",
     fontWeight: "600",
+  },
+
+  documentationSection: {
+    marginBottom: "30px",
+    padding: "24px",
+    borderRadius: "12px",
+    backgroundColor: "white",
+    border: "1px solid #e5e7eb",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+  },
+
+  documentationHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "20px",
+    flexWrap: "wrap",
+  },
+
+  documentationTitle: {
+    margin: "0 0 6px 0",
+    fontSize: "22px",
+  },
+
+  documentationDescription: {
+    margin: 0,
+    color: "#6b7280",
+  },
+
+  documentationButton: {
+    padding: "12px 20px",
+    border: "none",
+    borderRadius: "8px",
+    backgroundColor: "#7c3aed",
+    color: "white",
+    fontSize: "15px",
+    fontWeight: "600",
+  },
+
+  documentationError: {
+    marginTop: "15px",
+    color: "#dc2626",
+    fontWeight: "600",
+  },
+
+  documentationResult: {
+    marginTop: "20px",
+    padding: "20px",
+    borderRadius: "10px",
+    backgroundColor: "#f8fafc",
+    border: "1px solid #e5e7eb",
+  },
+
+  documentationResultHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "12px",
+    flexWrap: "wrap",
+  },
+
+  documentationResultTitle: {
+    margin: 0,
+    fontSize: "18px",
+  },
+
+  downloadButton: {
+    padding: "8px 14px",
+    border: "none",
+    borderRadius: "7px",
+    backgroundColor: "#111827",
+    color: "white",
+    cursor: "pointer",
+    fontWeight: "600",
+  },
+
+  documentationText: {
+    marginTop: "18px",
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+    lineHeight: "1.65",
+    fontFamily: "inherit",
+    color: "#1f2937",
   },
 
   tableBox: {

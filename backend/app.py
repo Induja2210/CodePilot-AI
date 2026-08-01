@@ -11,6 +11,9 @@ from services.project_summarizer import summarize_project
 from services.technology_detector import detect_technologies
 from services.bug_detector import detect_bugs
 from services.code_optimizer import optimize_code
+from services.documentation_generator import (
+    generate_project_documentation,
+)
 
 
 # Absolute backend and uploads paths
@@ -43,6 +46,9 @@ app = FastAPI(
 
 class ExplainFileRequest(BaseModel):
     path: str
+
+class DocumentationResponse(BaseModel):
+    documentation: str    
 
 class OptimizeFileRequest(BaseModel):
     path: str
@@ -346,6 +352,49 @@ def optimize_selected_file(request: OptimizeFileRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Code optimization failed: {str(error)}",
+        ) from error    
+
+@app.post(
+    "/generate-documentation",
+    response_model=DocumentationResponse,
+)
+def generate_documentation_endpoint():
+    uploaded_files_exist = any(
+        file_path.is_file()
+        for file_path in UPLOAD_DIRECTORY.rglob("*")
+    )
+
+    if not uploaded_files_exist:
+        raise HTTPException(
+            status_code=400,
+            detail="No uploaded project was found. Upload a project first.",
+        )
+
+    try:
+        documentation = generate_project_documentation(
+            UPLOAD_DIRECTORY
+        )
+
+        return {
+            "documentation": documentation,
+        }
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=500,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Documentation generation failed: {str(error)}",
         ) from error    
     
 @app.post("/detect-bugs")
