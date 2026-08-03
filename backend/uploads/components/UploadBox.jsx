@@ -45,14 +45,15 @@ function UploadBox() {
         formData.append("files", file, fileName);
       });
 
-      const response = await fetch(
-        "http://127.0.0.1:8000/upload",
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
+      const API_URL =
+        import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
+      const response = await fetch(`${API_URL}/upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      
       const data = await response.json();
 
       if (!response.ok || !data.success) {

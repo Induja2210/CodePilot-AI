@@ -46,7 +46,8 @@ function UploadBox() {
       });
 
       const API_URL =
-        import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+        import.meta.env.VITE_API_URL ||
+        "https://codepilot-ai-mqzl.onrender.com";
 
       const response = await fetch(`${API_URL}/upload`, {
         method: "POST",
