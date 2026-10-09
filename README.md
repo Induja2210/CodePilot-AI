@@ -4,6 +4,10 @@
 
 The application combines a **React frontend**, a **FastAPI backend**, and **Gemini-powered AI features** to analyse complete project folders and individual source-code files.
 
+🔗 **Live Demo:** [codepilot-frontend-i46e.onrender.com](https://codepilot-frontend-i46e.onrender.com/)
+
+> Hosted on Render's free tier, so the first load after a period of inactivity can take up to a minute while the server wakes up.
+
 ---
 
 ## Features
@@ -95,6 +99,10 @@ The application combines a **React frontend**, a **FastAPI backend**, and **Gemi
 - GitHub
 - Visual Studio Code
 - Postman / FastAPI Swagger UI
+
+### Deployment
+
+- Render
 
 ---
 
@@ -308,7 +316,7 @@ Never place API keys directly inside source-code files.
 
 ## Current Status
 
-CodePilot AI currently provides an end-to-end working MVP for project upload, codebase analysis, source-code viewing, AI project summarisation, technology detection, code explanation, bug detection, code optimisation, and automated documentation generation.
+CodePilot AI is deployed and live on Render. It currently provides an end-to-end working MVP for project upload, codebase analysis, source-code viewing, AI project summarisation, technology detection, code explanation, bug detection, code optimisation, and automated documentation generation.
 
 Future improvements may include:
 
